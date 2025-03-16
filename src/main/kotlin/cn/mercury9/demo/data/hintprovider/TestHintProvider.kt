@@ -1,5 +1,6 @@
 package cn.mercury9.demo.data.hintprovider
 
+import androidx.compose.ui.text.TextRange
 import java.util.*
 
 object TestHintProvider: HintProvider {
@@ -152,12 +153,18 @@ object TestHintProvider: HintProvider {
         "await",
     ) // CET first 146
 
-    override fun getHintFrom(source: String): List<String> {
-        if (source.isBlank()) return emptyList()
-        val res = list.filter {
+    override fun getHintFrom(source: String, textRange: TextRange): List<Hint> {
+        if (source.isBlank() || !textRange.collapsed) return emptyList()
+
+        val token = source.substring(0, textRange.start).split(Regex("\\s")).last()
+
+        val tokenStartPosition = textRange.start - token.length
+
+        return list.filter {
             it.lowercase(Locale.getDefault())
-                .startsWith(source.lowercase(Locale.getDefault()))
+                .startsWith(token.lowercase(Locale.getDefault()))
+        }.map {
+            Hint(it, TextRange(tokenStartPosition, textRange.start))
         }
-        return res
     }
 }

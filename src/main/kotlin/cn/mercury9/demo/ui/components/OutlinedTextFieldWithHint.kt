@@ -1,6 +1,7 @@
 package cn.mercury9.demo.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,7 @@ import androidx.compose.ui.window.Popup
 import cn.mercury9.decoratedText.DecoratedText
 import cn.mercury9.decoratedText.InCardDecoratedText
 import cn.mercury9.decoratedText.UndecoratedText
+import cn.mercury9.demo.data.hintprovider.Hint
 import cn.mercury9.demo.data.hintprovider.HintProvider
 import cn.mercury9.demo.resources.Res
 import cn.mercury9.demo.resources.keyboard_return_24px
@@ -100,32 +102,21 @@ fun OutlinedTextFieldWithHint(
 
     fun isHintShouldEffect(): Boolean {
         return hintEnabled &&
-                enabled &&
-                textFieldValue.selection.start == textFieldValue.selection.end
+                enabled
     }
 
-    val hintToken = textFieldValue.text
-        .subSequence(0, textFieldValue.selection.start)
-        .split('\n').last()
-        .split(' ').last()
-
-
-    var selectedHint by remember { mutableStateOf("") }
+    var selectedHint by remember { mutableStateOf(Hint.Empty) }
     var selectedHintIndex by remember { mutableStateOf(0) }
     var firstShowingHintIndex by remember { mutableStateOf(0) }
 
-    val hints = hintProvider.getHintFrom(hintToken)
-
-    val currentLine = textFieldValue.text
-        .subSequence(0, textFieldValue.selection.start)
-        .count { it == '\n' }
+    val hints = hintProvider.getHintFrom(value, textFieldValue.selection)
 
     val lineHeight = textStyle.lineHeight.value
 
     SideEffect {
         if (value != textFieldValue.text) {
             textFieldValue = textFieldValue.copy(text = value)
-            selectedHint = ""
+            selectedHint = Hint.Empty
             selectedHintIndex = 0
             firstShowingHintIndex = 0
             hintEnabled = true
@@ -149,23 +140,18 @@ fun OutlinedTextFieldWithHint(
         if (hints.isEmpty()) return
 
         val hint = hints[selectedHintIndex]
-        val text = textFieldValue.text
-        val selectionStart = textFieldValue.selection.start
 
-        val textBeforeSelection = text.subSequence(0, selectionStart)
-
-        val tokenStartIndex = textBeforeSelection.indexOfLast {
-            it.isWhitespace()
-        } + 1
-
-        val res = textBeforeSelection.substring(0, tokenStartIndex) +
-                hint +
-                text.subSequence(selectionStart, text.length)
+        val res = textFieldValue.text
+            .replaceRange(
+                hint.textRange.start,
+                hint.textRange.end,
+                hint.hint
+            )
 
         onValueChange(res)
 
         textFieldValue = textFieldValue.copy(
-            selection = TextRange(tokenStartIndex + hint.length),
+            selection = TextRange(hint.textRange.start + hint.hint.length),
             text = res
         )
 
@@ -259,7 +245,7 @@ fun OutlinedTextFieldWithHint(
         if (isHintShouldEffect() && hints.isNotEmpty()) {
             Popup(
                 alignment = Alignment.TopStart,
-                offset = IntOffset(0, (lineHeight * currentLine + 32).toInt()),
+                offset = IntOffset(0, (lineHeight + 40).toInt()),
             ) {
                 OutlinedCard(
                     modifier = Modifier
@@ -277,10 +263,17 @@ fun OutlinedTextFieldWithHint(
 
                             for (index in 0 until min(hintMaxShowingNumber, hints.size)) {
                                 val selfIndex = firstShowingHintIndex + index
+                                val selected = selfIndex == selectedHintIndex
                                 HintItem(
-                                    hint = hints[selfIndex],
-                                    selected = selfIndex == selectedHintIndex,
-                                )
+                                    hint = hints[selfIndex].hint,
+                                    selected = selected,
+                                ) {
+                                    if (selected) {
+                                        useHint()
+                                    } else {
+                                        selectedHintIndex = selfIndex
+                                    }
+                                }
                             }
 
                             if (firstShowingHintIndex + hintMaxShowingNumber < hints.size) {
@@ -294,12 +287,6 @@ fun OutlinedTextFieldWithHint(
                                 .background(MaterialTheme.colorScheme.surface)
                         ) {
                             HintOperations()
-//                            Text(
-//                                "Tab to select Down, Shift + Tab to select Up, Enter to Input.",
-//                                style = MaterialTheme.typography.labelSmall,
-//                                color = MaterialTheme.colorScheme.outline,
-//                                modifier = Modifier.padding(8.dp)
-//                            )
                         }
                     }
                 }
@@ -312,12 +299,14 @@ fun OutlinedTextFieldWithHint(
 private fun HintItem(
     hint: String,
     selected: Boolean,
+    onClick: (() -> Unit) = {},
 ) {
     Card(
         shape = MaterialTheme.shapes.small,
         modifier = Modifier
             .padding(1.dp)
             .height(IntrinsicSize.Min)
+            .clickable { onClick() },
     ) {
         Box(
             Modifier
